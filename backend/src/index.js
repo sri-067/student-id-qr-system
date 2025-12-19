@@ -9,11 +9,19 @@ const verifyRoutes = require('./routes/verify.routes');
 const studentPortalRoutes = require('./routes/student-portal.routes');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'https://studzgenerator-frontend.onrender.com', 'https://student-id-qr-frontend.onrender.com'],
+  credentials: true
+}));
 app.use(express.json({ limit: '5mb' }));
 
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Health check route
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', message: 'Student ID QR System API is running' });
+});
 
 // Routes
 const logsRoutes = require('./routes/logs.routes');
