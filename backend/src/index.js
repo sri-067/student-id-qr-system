@@ -18,7 +18,20 @@ app.use(express.json({ limit: '5mb' }));
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Health check route
+// Basic routes
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Student ID QR Code System API', 
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth/login',
+      students: '/api/students',
+      verify: '/verify/:token'
+    }
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Student ID QR System API is running' });
 });
