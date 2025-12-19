@@ -14,6 +14,7 @@ const studentSchema = new mongoose.Schema({
   year: String,
   email: String,
   phone: String,
+  password: String, // for student login
   photoUrl: String,
   cardNumber: { type: String, unique: true },
   qrId: { type: String, index: true },

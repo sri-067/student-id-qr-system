@@ -5,19 +5,36 @@ const { createQrId, generateQRCodeDataUrlForId } = require('../utils/qr');
 
 async function createStudent(req, res, next) {
   try {
-    const { regNo, name, department, year, email, phone } = req.body;
+    const { regNo, name, department, year, email, phone, password, metadata, customExpiry } = req.body;
     const existing = await Student.findOne({ regNo, deleted: { $ne: true } });
     if (existing) return res.status(400).json({ error: 'regNo exists' });
 
+    const bcrypt = require('bcrypt');
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : await bcrypt.hash(regNo, 10); // default password is regNo
+
+    // Set expiry: custom datetime or default 10 minutes
+    let expiryDate;
+    if (customExpiry) {
+      expiryDate = new Date(customExpiry);
+      console.log('Using custom expiry:', expiryDate.toISOString());
+    } else {
+      expiryDate = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+      console.log('Using default 10-minute expiry:', expiryDate.toISOString());
+    }
+
     const student = new Student({
       regNo, name, department, year, email, phone,
+      password: hashedPassword,
       cardNumber: `CARD-${regNo}-${Date.now()}`,
       cardIssuedAt: new Date(),
-      cardExpiry: new Date(Date.now() + (process.env.TOKEN_LIFE_DAYS || 365) * 24*3600*1000)
+      cardExpiry: expiryDate,
+      metadata: metadata ? JSON.parse(metadata) : {}
     });
 
     if (req.file) {
-      student.photoUrl = `${process.env.APP_URL.replace(/\/$/, '')}/uploads/${req.file.filename}`;
+      const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : `http://localhost:${process.env.PORT || 5000}`;
+      student.photoUrl = `${baseUrl}/uploads/${req.file.filename}`;
+      console.log('Created photo URL:', student.photoUrl);
     }
 
     const qrId = createQrId();
@@ -150,12 +167,20 @@ async function renewStudentExpiry(req, res, next) {
   try {
     const id = req.params.id;
     const admin = req.user;
-    const { extraDays = 365 } = req.body;
+    const { extraDays, customExpiryDate } = req.body;
     const student = await Student.findById(id);
     if (!student || student.deleted) return res.status(404).json({ error: 'student not found' });
 
     const oldExpiry = student.cardExpiry;
-    const newExpiry = new Date(Date.now() + Number(extraDays) * 24*3600*1000);
+    let newExpiry;
+    
+    if (customExpiryDate) {
+      newExpiry = new Date(customExpiryDate);
+    } else {
+      const minutes = extraDays || 10; // Default 10 minutes
+      newExpiry = new Date(Date.now() + Number(minutes) * 60 * 1000);
+    }
+    
     student.cardExpiry = newExpiry;
     await student.save();
 
@@ -164,10 +189,70 @@ async function renewStudentExpiry(req, res, next) {
       adminEmail: admin?.email,
       action: 'RENEW',
       targetStudentId: student._id,
-      details: { oldExpiry, newExpiry }
+      details: { oldExpiry, newExpiry, extraDays, customExpiryDate }
     });
 
     res.json({ message: 'renewed', student });
+  } catch (err) { next(err); }
+}
+
+async function downloadQR(req, res, next) {
+  try {
+    const id = req.params.id;
+    const student = await Student.findById(id);
+    if (!student || student.deleted) return res.status(404).json({ error: 'student not found' });
+
+    const { qrDataUrl, signedUrl } = await generateQRCodeDataUrlForId(
+      student.qrId, 
+      process.env.APP_URL || 'http://localhost:5000', 
+      process.env.JWT_SECRET
+    );
+
+    res.json({ qrDataUrl, signedUrl, student: { name: student.name, regNo: student.regNo } });
+  } catch (err) { next(err); }
+}
+
+async function updateStudentMetadata(req, res, next) {
+  try {
+    const id = req.params.id;
+    const admin = req.user;
+    const { metadata } = req.body;
+    const student = await Student.findById(id);
+    if (!student || student.deleted) return res.status(404).json({ error: 'student not found' });
+
+    const oldMetadata = student.metadata;
+    student.metadata = metadata || {};
+    await student.save();
+
+    await AuditLog.create({
+      adminId: admin?.id,
+      adminEmail: admin?.email,
+      action: 'UPDATE_METADATA',
+      targetStudentId: student._id,
+      details: { oldMetadata, newMetadata: metadata }
+    });
+
+    res.json({ message: 'metadata updated', student });
+  } catch (err) { next(err); }
+}
+
+async function permanentDeleteStudent(req, res, next) {
+  try {
+    const id = req.params.id;
+    const admin = req.user;
+    const student = await Student.findById(id);
+    if (!student) return res.status(404).json({ error: 'student not found' });
+
+    await AuditLog.create({
+      adminId: admin?.id,
+      adminEmail: admin?.email,
+      action: 'DELETE_PERMANENT',
+      targetStudentId: student._id,
+      details: { studentData: { name: student.name, regNo: student.regNo } }
+    });
+
+    await Student.findByIdAndDelete(id);
+    res.json({ message: 'permanently deleted' });
   } catch (err) { next(err); }
 }
 
@@ -178,5 +263,8 @@ module.exports = {
   deactivateStudent,
   reactivateStudent,
   softDeleteStudent,
-  renewStudentExpiry
+  permanentDeleteStudent,
+  renewStudentExpiry,
+  downloadQR,
+  updateStudentMetadata
 };

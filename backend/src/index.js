@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const authRoutes = require('./routes/auth.routes');
 const studentsRoutes = require('./routes/students.routes');
 const verifyRoutes = require('./routes/verify.routes');
+const studentPortalRoutes = require('./routes/student-portal.routes');
 
 const app = express();
 app.use(cors());
@@ -19,6 +20,7 @@ const logsRoutes = require('./routes/logs.routes');
 app.use('/api/logs', logsRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/students', studentsRoutes);
+app.use('/api/student-portal', studentPortalRoutes);
 app.use('/', verifyRoutes); // public verify route mounted at /verify/:token
 
 // error handler

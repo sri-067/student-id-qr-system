@@ -11,7 +11,10 @@ const {
   deactivateStudent,
   reactivateStudent,
   softDeleteStudent,
-  renewStudentExpiry
+  permanentDeleteStudent,
+  renewStudentExpiry,
+  downloadQR,
+  updateStudentMetadata
 } = require('../controllers/students.controller');
 const multer = require('multer');
 const path = require('path');
@@ -57,7 +60,19 @@ router.put('/:id/reactivate', auth, reactivateStudent);
 // Soft-delete student
 router.delete('/:id', auth, softDeleteStudent);
 
+// Permanent delete student
+router.delete('/:id/permanent', auth, permanentDeleteStudent);
+
 // Renew expiry
-router.put('/:id/renew', auth, renewStudentExpiry);
+router.put('/:id/renew', auth, [
+  body('extraDays').optional().isInt({ min: 1 }).withMessage('extraDays must be positive integer'),
+  body('customExpiryDate').optional().isISO8601().withMessage('customExpiryDate must be valid date')
+], validate, renewStudentExpiry);
+
+// Download QR
+router.get('/:id/qr', auth, downloadQR);
+
+// Update metadata
+router.put('/:id/metadata', auth, updateStudentMetadata);
 
 module.exports = router;
